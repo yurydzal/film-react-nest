@@ -1,19 +1,8 @@
 import { Module } from '@nestjs/common';
-import {ServeStaticModule} from "@nestjs/serve-static";
-import {ConfigModule} from "@nestjs/config";
-import * as path from "node:path";
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import * as path from 'node:path';
 
-<<<<<<< Updated upstream
-import {configProvider} from "./app.config.provider";
-
-@Module({
-  imports: [
-	ConfigModule.forRoot({
-          isGlobal: true,
-          cache: true
-      }),
-      // @todo: Добавьте раздачу статических файлов из public
-=======
 import { configProvider } from './app.config.provider';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -58,9 +47,7 @@ import { Schedule as ScheduleEntity } from './films/entities/schedule.entity';
         }),
     FilmModule,
     OrderModule,
->>>>>>> Stashed changes
   ],
-  controllers: [],
   providers: [configProvider],
 })
 export class AppModule {}

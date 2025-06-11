@@ -1,12 +1,6 @@
-import {ConfigModule} from "@nestjs/config";
+import { ConfigModule } from '@nestjs/config';
 
 export const configProvider = {
-<<<<<<< Updated upstream
-    imports: [ConfigModule.forRoot()],
-    provide: 'CONFIG',
-    useValue: < AppConfig> {
-        //TODO прочесть переменнные среды
-=======
   imports: [ConfigModule.forRoot()],
   provide: 'CONFIG',
   useValue: <AppConfig>{
@@ -21,19 +15,15 @@ export const configProvider = {
       host: process.env.DATABASE_HOST || 'localhost',
       port: parseInt(process.env.DATABASE_PORT || '5432', 10),
       name: process.env.DATABASE_NAME || 'film-db',
->>>>>>> Stashed changes
     },
-}
+  },
+};
 
 export interface AppConfig {
-    database: AppConfigDatabase
+  database: AppConfigDatabase;
 }
 
 export interface AppConfigDatabase {
-<<<<<<< Updated upstream
-    driver: string
-    url: string
-=======
   driver: string;
   url: string;
   username: string;
@@ -41,5 +31,4 @@ export interface AppConfigDatabase {
   host: string;
   port: number;
   name: string;
->>>>>>> Stashed changes
 }
