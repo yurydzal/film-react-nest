@@ -1,20 +1,70 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
-import { Film } from '../films/schemas/film.schema';
-import { Schedule } from '../films/interfaces/schedule.interface';
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { Film as FilmSchema } from '../films/schemas/film.schema';
+import { Film as FilmEntity } from '../films/entities/films.entity';
+import { Schedule as ScheduleEntity } from '../films/entities/schedule.entity';
 
 @Injectable()
 export class FilmRepository {
-  constructor(@InjectModel(Film.name) private filmModel: Model<Film>) {}
+  private isPostgres: boolean;
 
-  async findAll(): Promise<Film[]> {
-    return this.filmModel.find().exec();
+  constructor(
+    private configService: ConfigService,
+    @Optional()
+    @InjectModel(FilmSchema.name)
+    private filmModel: Model<FilmSchema>,
+    @Optional()
+    @InjectRepository(FilmEntity)
+    private filmRepository: Repository<FilmEntity>,
+    @Optional()
+    @InjectRepository(ScheduleEntity)
+    private scheduleRepository: Repository<ScheduleEntity>,
+  ) {
+    this.isPostgres = this.configService.get('DATABASE_DRIVER') === 'postgres';
   }
 
-  async findScheduleById(filmId: string): Promise<Schedule[]> {
-    const film = await this.filmModel.findOne({ id: filmId }).exec();
-    return film?.schedule || [];
+  async findAll() {
+    if (this.isPostgres) {
+      const [total, items] = await Promise.all([
+        this.filmRepository.count(),
+        this.filmRepository.find({
+          relations: {
+            schedule: true,
+          },
+        }),
+      ]);
+      return {
+        total,
+        items,
+      };
+    } else {
+      const films = await this.filmModel.find().exec();
+      return {
+        total: films.length,
+        items: films,
+      };
+    }
+  }
+
+  async findScheduleById(filmId: string) {
+    if (this.isPostgres) {
+      const film = await this.filmRepository.findOne({
+        where: { id: filmId },
+        relations: ['schedule'],
+      });
+      return film?.schedule || [];
+    } else {
+      const film = await this.filmModel.findOne({ id: filmId }).exec();
+      const schedules = film?.schedule || [];
+      return {
+        total: schedules.length,
+        items: schedules,
+      };
+    }
   }
 
   async updateTakenSeats(
@@ -22,18 +72,32 @@ export class FilmRepository {
     sessionId: string,
     seat: string,
   ): Promise<void> {
-    await this.filmModel
-      .updateOne(
-        {
-          id: filmId,
-          'schedule.id': sessionId,
-        },
-        {
-          $push: {
-            'schedule.$.taken': seat,
+    if (this.isPostgres) {
+      const schedule = await this.scheduleRepository.findOne({
+        where: { id: sessionId, filmId: filmId },
+      });
+      if (schedule) {
+        const currentTaken = schedule.taken
+          ? schedule.taken.split(',').filter((s) => s.trim())
+          : [];
+        currentTaken.push(seat);
+        schedule.taken = currentTaken.join(',');
+        await this.scheduleRepository.save(schedule);
+      }
+    } else {
+      await this.filmModel
+        .updateOne(
+          {
+            id: filmId,
+            'schedule.id': sessionId,
           },
-        },
-      )
-      .exec();
+          {
+            $push: {
+              'schedule.$.taken': seat,
+            },
+          },
+        )
+        .exec();
+    }
   }
 }

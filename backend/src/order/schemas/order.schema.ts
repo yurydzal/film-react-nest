@@ -17,3 +17,5 @@ export class Order {
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
+
+OrderSchema.index({ film: 1, session: 1, row: 1, seat: 1 }, { unique: true });

@@ -5,5 +5,5 @@ export interface Schedule {
   rows: number;
   seats: number;
   price: number;
-  taken: string[];
+  taken: string[] | string;
 }
