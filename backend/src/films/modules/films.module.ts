@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
-
 import { FilmsController } from '../controllers/films.controller';
 import { FilmsService } from '../services/films.service';
 import { FilmRepository } from '../../repository/film.repository';

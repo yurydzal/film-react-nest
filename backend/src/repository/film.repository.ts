@@ -4,7 +4,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-
 import { Film as FilmSchema } from '../films/schemas/film.schema';
 import { Film as FilmEntity } from '../films/entities/films.entity';
 import { Schedule as ScheduleEntity } from '../films/entities/schedule.entity';
