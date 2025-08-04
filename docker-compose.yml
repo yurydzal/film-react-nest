@@ -1,0 +1,80 @@
+services:
+
+  frontend:
+    image: ghrc.io/yurydzal/film-react-nest/films_frontend:latest
+    container_name: frontend_container
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    env_file:
+      - frontend/.env
+    ports:
+      - "8082:80"
+    volumes:
+      - frontend_data:/app/dist
+
+  backend:
+    image: ghrc.io/yurydzal/film-react-nest/films_backend:latest
+    container_name: backend_container
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    env_file:
+      - backend/.env
+    ports:
+      - "3000:3000"
+    networks:
+      - local
+    depends_on:
+      - postgres
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx_container
+    build:
+      context: nginx
+      dockerfile: Dockerfile
+    ports:
+      - "8081:80"
+    networks:
+      - local
+    volumes:
+      - frontend_data:/var/www
+    depends_on:
+      - frontend
+      - backend
+
+  postgres:
+    image: postgres:latest
+    container_name: postgres_container
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: film-db
+    ports:
+      - "5432:5432"
+    networks:
+      - local
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin_container
+    environment:
+      PGADMIN_DEFAULT_EMAIL: root@localhost.com
+      PGADMIN_DEFAULT_PASSWORD: toor
+    ports:
+      - "8080:80"
+    networks:
+      - local
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  frontend_data:
+
+networks:
+  local:

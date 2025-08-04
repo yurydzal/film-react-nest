@@ -1,79 +1,45 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Film } from '../../films/schemas/film.schema';
-import { Order } from '../schemas/order.schema';
 import { CreateOrderDto } from '../dto/order.dto';
 import { v4 as uuidv4 } from 'uuid';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Film as FilmEntity } from '../../films/entities/films.entity';
-import { Schedule as ScheduleEntity } from '../../films/entities/schedule.entity';
+import { FilmRepository } from '../../repository/film.repository';
 
 @Injectable()
 export class OrderService {
-  private isPostgres: boolean;
+  private readonly logger = new Logger(OrderService.name);
 
   constructor(
     private configService: ConfigService,
-    @Optional()
-    @InjectModel(Order.name)
-    private orderModel: Model<Order>,
-    @Optional()
-    @InjectModel(Film.name)
-    private filmModel: Model<Film>,
-    @Optional()
-    @InjectRepository(FilmEntity)
-    private filmEntityRepository: Repository<FilmEntity>,
-    @Optional()
-    @InjectRepository(ScheduleEntity)
-    private scheduleEntityRepository: Repository<ScheduleEntity>,
-  ) {
-    this.isPostgres = this.configService.get('DATABASE_DRIVER') === 'postgres';
-  }
+    private filmRepository: FilmRepository,
+  ) {}
 
   async createOrder(createOrderDto: CreateOrderDto) {
     const orderResults = [];
 
-    for (const ticket of createOrderDto.tickets) {
-      const seatString = `${ticket.row}:${ticket.seat}`;
+    try {
+      for (const ticket of createOrderDto.tickets) {
+        const seatString = `${ticket.row}:${ticket.seat}`;
 
-      if (this.isPostgres) {
-        const film = await this.filmEntityRepository.findOne({
-          where: { id: ticket.film },
-          relations: ['schedule'],
+        await this.filmRepository.updateTakenSeats(
+          ticket.film,
+          ticket.session,
+          seatString,
+        );
+
+        orderResults.push({
+          ...ticket,
+          id: uuidv4(),
+          status: 'confirmed',
         });
-
-        if (film) {
-          const schedule = film.schedule.find((s) => s.id === ticket.session);
-          if (schedule) {
-            const currentTaken =
-              typeof schedule.taken === 'string'
-                ? schedule.taken.split(',').filter((s) => s.trim())
-                : schedule.taken || [];
-            currentTaken.push(seatString);
-            schedule.taken = currentTaken.join(',');
-            await this.filmEntityRepository.save(film);
-          }
-        }
-      } else {
-        const film = await this.filmModel.findOne({ id: ticket.film }).exec();
-        if (film) {
-          const session = film.schedule.find((s) => s.id === ticket.session);
-          if (session) {
-            session.taken.push(seatString);
-            await film.save();
-          }
-        }
       }
 
-      orderResults.push({
-        ...ticket,
-        id: uuidv4(),
-      });
+      return {
+        total: orderResults.length,
+        items: orderResults,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to create order: ${error.message}`);
+      throw error;
     }
-
-    return { total: orderResults.length, items: orderResults };
   }
 }
