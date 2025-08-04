@@ -1,4 +1,9 @@
-import { Injectable, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Optional,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
@@ -11,6 +16,7 @@ import { Schedule as ScheduleEntity } from '../films/entities/schedule.entity';
 @Injectable()
 export class FilmRepository {
   private isPostgres: boolean;
+  private readonly logger = new Logger(FilmRepository.name);
 
   constructor(
     private configService: ConfigService,
@@ -28,42 +34,63 @@ export class FilmRepository {
   }
 
   async findAll() {
-    if (this.isPostgres) {
-      const [total, items] = await Promise.all([
-        this.filmRepository.count(),
-        this.filmRepository.find({
-          relations: {
-            schedule: true,
-          },
-        }),
-      ]);
-      return {
-        total,
-        items,
-      };
-    } else {
-      const films = await this.filmModel.find().exec();
-      return {
-        total: films.length,
-        items: films,
-      };
+    try {
+      if (this.isPostgres) {
+        const query = this.filmRepository
+          .createQueryBuilder('film')
+          .leftJoinAndSelect('film.schedule', 'schedule')
+          .orderBy('film.title', 'ASC')
+          .addOrderBy('schedule.daytime', 'ASC');
+
+        const [items, total] = await query.getManyAndCount();
+
+        return {
+          total,
+          items,
+        };
+      } else {
+        const films = await this.filmModel.find().sort({ title: 1 }).exec();
+
+        return {
+          total: films.length,
+          items: films,
+        };
+      }
+    } catch (error) {
+      this.logger.error('Error finding all films:', error);
+      throw error;
     }
   }
 
   async findScheduleById(filmId: string) {
-    if (this.isPostgres) {
-      const film = await this.filmRepository.findOne({
-        where: { id: filmId },
-        relations: ['schedule'],
-      });
-      return film?.schedule || [];
-    } else {
-      const film = await this.filmModel.findOne({ id: filmId }).exec();
-      const schedules = film?.schedule || [];
-      return {
-        total: schedules.length,
-        items: schedules,
-      };
+    try {
+      if (this.isPostgres) {
+        const schedules = await this.scheduleRepository
+          .createQueryBuilder('schedule')
+          .where('schedule.filmId = :filmId', { filmId })
+          .orderBy('schedule.daytime', 'ASC')
+          .getMany();
+
+        return {
+          total: schedules.length,
+          items: schedules,
+        };
+      } else {
+        const film = await this.filmModel.findOne({ id: filmId }).exec();
+        const schedules =
+          film?.schedule?.sort(
+            (a, b) =>
+              new Date(a.daytime).getTime() - new Date(b.daytime).getTime(),
+          ) || [];
+
+        return {
+          total: schedules.length,
+          items: schedules,
+        };
+      }
+    } catch (error) {
+      this.logger.error(`Error finding schedule for film ${filmId}:`, error);
+      throw error;
     }
   }
 
@@ -72,32 +99,53 @@ export class FilmRepository {
     sessionId: string,
     seat: string,
   ): Promise<void> {
-    if (this.isPostgres) {
-      const schedule = await this.scheduleRepository.findOne({
-        where: { id: sessionId, filmId: filmId },
-      });
-      if (schedule) {
-        const currentTaken = schedule.taken
-          ? schedule.taken.split(',').filter((s) => s.trim())
-          : [];
-        currentTaken.push(seat);
-        schedule.taken = currentTaken.join(',');
-        await this.scheduleRepository.save(schedule);
-      }
-    } else {
-      await this.filmModel
-        .updateOne(
-          {
+    try {
+      if (this.isPostgres) {
+        await this.scheduleRepository.manager.transaction(async (manager) => {
+          const schedule = await manager.findOne(ScheduleEntity, {
+            where: { id: sessionId, filmId: filmId },
+            lock: { mode: 'pessimistic_write' },
+          });
+
+          if (!schedule) {
+            throw new Error('Schedule not found');
+          }
+
+          const currentTaken = schedule.taken
+            ? schedule.taken.split(',').filter((s) => s.trim())
+            : [];
+
+          if (currentTaken.includes(seat)) {
+            throw new ConflictException('Seat already taken');
+          }
+
+          currentTaken.push(seat);
+          schedule.taken = currentTaken.join(',');
+          await manager.save(ScheduleEntity, schedule);
+        });
+      } else {
+        const existingSeat = await this.filmModel
+          .findOne({
             id: filmId,
             'schedule.id': sessionId,
-          },
-          {
-            $push: {
-              'schedule.$.taken': seat,
-            },
-          },
-        )
-        .exec();
+            'schedule.taken': seat,
+          })
+          .exec();
+
+        if (existingSeat) {
+          throw new ConflictException('Seat already taken');
+        }
+
+        await this.filmModel
+          .updateOne(
+            { id: filmId, 'schedule.id': sessionId },
+            { $push: { 'schedule.$.taken': seat } },
+          )
+          .exec();
+      }
+    } catch (error) {
+      this.logger.error(`Failed to update taken seats: ${error.message}`);
+      throw error;
     }
   }
 }
