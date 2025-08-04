@@ -1,5 +1,11 @@
 # FILM!
 
+## Ссылки
+
+Фронтенд доступен по адрессу https://filmsnest.nomorepartiessbs.ru/
+
+Бэкенд по адрессу https://filmsnest.nomorepartiessbs.ru/admin
+
 ## Установка
 
 ### MongoDB
